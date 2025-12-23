@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Client-side Image Cropper</title>
+    <title>ImageCropper</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         :root {
@@ -74,7 +74,7 @@
 <body class="p-4 md:p-8">
     <div class="max-w-5xl mx-auto">
         <header class="mb-8 text-center">
-            <h1 class="text-3xl md:text-4xl font-bold tracking-tight text-blue-400">CinemaCrop</h1>
+            <h1 class="text-3xl md:text-4xl font-bold tracking-tight text-blue-400">ImageCropper</h1>
             <p class="text-slate-400 mt-2">Professional cinematic cropping at original resolution.</p>
         </header>
 
@@ -174,6 +174,7 @@
         const infoCropRes = document.getElementById('info-crop-res');
 
         let originalImage = new Image();
+        let originalMimeType = 'image/jpeg'; // Default fallback
         let currentRatio = 1.85; // Default
         let cropState = {
             top: 0,
@@ -192,6 +193,9 @@
         function handleFile(e) {
             const file = e.target.files[0];
             if (!file) return;
+
+            // Capture the original format to prevent file size inflation
+            originalMimeType = file.type || 'image/jpeg';
 
             const reader = new FileReader();
             reader.onload = function(event) {
@@ -232,24 +236,19 @@
         }
 
         function initCrop() {
-            // Calculate display dimensions
             const displayW = previewImg.clientWidth;
             const displayH = previewImg.clientHeight;
             
             let frameW, frameH;
 
-            // Fit ratio inside image area
             if (displayW / displayH > currentRatio) {
-                // Image is wider than crop
                 frameH = displayH;
                 frameW = frameH * currentRatio;
             } else {
-                // Image is taller than crop
                 frameW = displayW;
                 frameH = frameW / currentRatio;
             }
 
-            // Center it
             cropState.width = frameW;
             cropState.height = frameH;
             cropState.left = (displayW - frameW) / 2;
@@ -259,7 +258,6 @@
         }
 
         function updateFrameUI() {
-            // Offset by the image's position within container
             const imgRect = previewImg.getBoundingClientRect();
             const contRect = container.getBoundingClientRect();
 
@@ -271,19 +269,16 @@
             cropFrame.style.left = `${cropState.left + offsetLeft}px`;
             cropFrame.style.top = `${cropState.top + offsetTop}px`;
 
-            // Calculate actual crop resolution
             const scale = originalImage.width / previewImg.clientWidth;
             const actualW = Math.round(cropState.width * scale);
             const actualH = Math.round(cropState.height * scale);
             infoCropRes.innerText = `Crop: ${actualW} x ${actualH}`;
         }
 
-        // Dragging Logic
         cropFrame.addEventListener('mousedown', startDrag);
         window.addEventListener('mousemove', drag);
         window.addEventListener('mouseup', endDrag);
 
-        // Touch support
         cropFrame.addEventListener('touchstart', (e) => startDrag(e.touches[0]));
         window.addEventListener('touchmove', (e) => drag(e.touches[0]));
         window.addEventListener('touchend', endDrag);
@@ -301,7 +296,6 @@
             let nextX = e.clientX - startX;
             let nextY = e.clientY - startY;
 
-            // Boundaries
             const maxLeft = previewImg.clientWidth - cropState.width;
             const maxTop = previewImg.clientHeight - cropState.height;
 
@@ -329,22 +323,24 @@
             canvas.width = sWidth;
             canvas.height = sHeight;
 
-            // High quality scaling settings
             ctx.imageSmoothingEnabled = true;
             ctx.imageSmoothingQuality = 'high';
 
             ctx.drawImage(originalImage, sx, sy, sWidth, sHeight, 0, 0, sWidth, sHeight);
 
-            // Export
             try {
-                const dataUrl = canvas.toDataURL('image/png', 1.0);
+                // Use original MIME type and set quality to 0.92 (standard for high-quality JPEG)
+                // This prevents the massive size increase caused by defaulting to PNG
+                const quality = (originalMimeType === 'image/jpeg' || originalMimeType === 'image/webp') ? 0.92 : undefined;
+                const dataUrl = canvas.toDataURL(originalMimeType, quality);
+                
                 const link = document.createElement('a');
-                link.download = `CinemaCrop_${Math.round(currentRatio*100)/100}_${Date.now()}.png`;
+                const ext = originalMimeType.split('/')[1] || 'png';
+                link.download = `ImageCropper_${Math.round(currentRatio*100)/100}_${Date.now()}.${ext}`;
                 link.href = dataUrl;
                 link.click();
             } catch (err) {
                 console.error("Export failed", err);
-                // Use a message box instead of alert
                 const msg = document.createElement('div');
                 msg.className = "fixed top-4 left-1/2 -translate-x-1/2 bg-red-600 text-white p-4 rounded shadow-xl z-50";
                 msg.innerText = "Export failed. This might happen with very large images in some browsers.";
@@ -353,12 +349,8 @@
             }
         }
 
-        // Handle window resize to keep crop in sync
         window.addEventListener('resize', () => {
             if (originalImage.src) {
-                // Re-calculating center might be annoying if user moved it, 
-                // but necessary if display size changes drastically.
-                // For simplicity, we just keep the frame centered on resize.
                 initCrop();
             }
         });
